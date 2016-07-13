@@ -1,0 +1,356 @@
+---
+title: "lazyeval"
+author: "shs"
+date: "13 7 2016"
+output:
+    pdf_document:
+         latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(lazyeval)
+```
+
+
+
+# 1 as.lazy 
+```{r}
+as.lazy(~ x + 1)
+as.lazy(quote(x + 1), globalenv())
+as.lazy("x + 1", globalenv())
+as.lazy_dots(list(~x, y = ~z + 1))
+as.lazy_dots(c("a", "b", "c"), globalenv())
+as.lazy_dots(~x)
+as.lazy_dots(quote(x), globalenv())
+as.lazy_dots(quote(f()), globalenv())
+as.lazy_dots(lazy(x))
+```
+
+# 2 ast_
+```{r}
+ast(f(x, 1, g(), h(i())))
+ast(if (TRUE) 3 else 4)
+ast(function(a = 1, b = 2) {a + b + 10})
+ast(f(x)(y)(z))
+ast_(quote(f(x, 1, g(), h(i()))))
+ast_(quote(if (TRUE) 3 else 4))
+ast_(expression(1, 2, 3))
+```
+
+# 2 as_name
+```{r}
+as_name("x + y")
+as_call("x + y")
+as_call(~ f)
+as_name(~ f())
+```
+
+# 3 call_modify
+```{r}
+call <- quote(mean(x, na.rm = TRUE))
+call_standardise(call)
+# Modify an existing argument
+call_modify(call, list(na.rm = FALSE))
+call_modify(call, list(x = quote(y)))
+# Remove an argument
+call_modify(call, list(na.rm = NULL))
+# Add a new argument
+call_modify(call, list(trim = 0.1))
+# Add an explicit missing argument
+call_modify(call, list(na.rm = quote(expr = )))
+
+```
+
+# 4 call_new
+```{r}
+# f can either be a string, a symbol or a call
+call_new("f", a = 1)
+call_new(quote(f), a = 1)
+call_new(quote(f()), a = 1)
+#' Can supply arguments individually or in a list
+call_new(quote(f), a = 1, b = 2)
+call_new(quote(f), .args = list(a = 1, b = 2))
+```
+
+# 5 expr_label
+```{r}
+# Unlike substitute(), expr_find() finds the original expression
+f <- function(x) g(x)
+g <- function(y) h(y)
+h <- function(z) list(substitute(z), expr_find(z))
+f(1 + 2 + 3)
+expr_label(10)
+# Names a quoted with ‘‘
+expr_label(x)
+# Strings are encoded
+expr_label("a\nb")
+# Expressions are captured
+expr_label(a + b + c)
+# Long expressions are collapsed
+expr_label(foo({
+1 + 2
+print(x)
+}))
+```
+
+# 6 function_new
+```{r}
+f <- function(x) x + 3
+g <- function_new(alist(x = ), quote(x + 3))
+# The components of the functions are identical
+identical(formals(f), formals(g))
+identical(body(f), body(g))
+identical(environment(f), environment(g))
+# But the functions are not identical because f has src code reference
+identical(f, g)
+attr(f, "srcref") <- NULL
+# Now they are:
+stopifnot(identical(f, g))
+```
+
+
+
+# 7 f_capture
+```{r}
+f_capture(a + b)
+dots_capture(a + b, c + d, e + f)
+# These functions will follow a chain of promises back to the
+# original definition
+f <- function(x) g(x)
+g <- function(y) h(y)
+h <- function(z) f_capture(z)
+f(a + b + c)
+```
+
+# 8 f_eval_rhs
+```{r}
+f_eval(~ 1 + 2 + 3)
+# formulas automatically capture their enclosing environment
+foo <- function(x) {
+y <- 10
+~ x + y
+}
+f <- foo(1)
+f
+f_eval(f)
+# If you supply data, f_eval will look their first:
+f_eval(~ cyl, mtcars)
+# To avoid ambiguity, you can use .env and .data pronouns to be
+# explicit:
+cyl <- 10
+f_eval(~ .data$cyl, mtcars)
+f_eval(~ .env$cyl, mtcars)
+# Imagine you are computing the mean of a variable:
+f_eval(~ mean(cyl), mtcars)
+# How can you change the variable that's being computed?
+# The easiest way is "unquote" with uq()
+# See ?f_interp for more details
+var <- ~ cyl
+f_eval(~ mean( uq(var) ), mtcars)
+```
+
+
+
+
+
+
+
+
+
+
+
+# 9 f_interp
+```{r}
+f_interp(x ~ 1 + uq(1 + 2 + 3) + 10)
+# Use uqs() if you want to add multiple arguments to a function
+# It must evaluate to a list
+args <- list(1:10, na.rm = TRUE)
+f_interp(~ mean( uqs(args) ))
+# You can combine the two
+var <- quote(xyz)
+extra_args <- list(trim = 0.9)
+f_interp(~ mean( uq(var) , uqs(extra_args) ))
+foo <- function(n) {
+~ 1 + uq(n)
+}
+f <- foo(10)
+f
+f_interp(f)
+```
+
+# 10 f_list
+```{r}
+f_list("y" ~ x)
+f_list(a = "y" ~ a, ~ b, c = ~c)
+```
+
+# 11 f_new
+```{r}
+f_new(quote(a))
+f_new(quote(a), quote(b))
+```
+
+# 12 f_rhs
+```{r}
+f_rhs(~ 1 + 2 + 3)
+f_rhs(~ x)
+f_rhs(~ "A")
+f_rhs(1 ~ 2)
+f_lhs(~ y)
+f_lhs(x ~ y)
+f_env(~ x)
+```
+
+# 13 f_text
+```{r}
+f <- ~ a + b + bc
+f_text(f)
+f_label(f)
+# Names a quoted with ‘‘
+f_label(~ x)
+# Strings are encoded
+f_label(~ "a\nb")
+# Long expressions are collapsed
+f_label(~ foo({
+1 + 2
+print(x)
+}))
+```
+
+# 14 f_unwrap
+```{r}
+n <- 100
+f <- ~ x + n
+f_unwrap(f)
+```
+
+# 15 interp
+```{r}
+# Interp works with formulas, lazy objects, quoted calls and strings
+interp(~ x + y, x = 10)
+interp(lazy(x + y), x = 10)
+interp(quote(x + y), x = 10)
+interp("x + y", x = 10)
+# Use as.name if you have a character string that gives a
+# variable name
+interp(~ mean(var), var = as.name("mpg"))
+# or supply the quoted name directly
+interp(~ mean(var), var = quote(mpg))
+# Or a function!
+interp(~ f(a, b), f = as.name("+"))
+# Remember every action in R is a function call:
+# http://adv-r.had.co.nz/Functions.html#all-calls
+# If you've built up a list of values through some other
+# mechanism, use .values
+interp(~ x + y, .values = list(x = 10))
+# You can also interpolate variables defined in the current
+# environment, but this is a little risky.
+y <- 10
+interp(~ x + y, .values = environment())
+```
+
+# 16 is_formula
+```{r}
+is_formula(~ 10)
+is_formula(10)
+```
+
+# 17 is_lang
+```{r}
+q1 <- quote(1)
+is_lang(q1)
+is_atomic(q1)
+q2 <- quote(x)
+is_lang(q2)
+is_name(q2)
+q3 <- quote(x + 1)
+is_lang(q3)
+is_call(q3)
+```
+
+# 18 lazy_
+```{r}
+lazy_(quote(a + x), globalenv())
+# Lazy is designed to be used inside a function - you should
+# give it the name of a function argument (a promise)
+f <- function(x = b - a) {
+lazy(x)
+}
+f()
+f(a + b / c)
+# Lazy also works when called from the global environment. This makes
+# easy to play with interactively.
+lazy(a + b / c)
+# By default, lazy will climb all the way back to the initial promise
+# This is handy if you have if you have nested functions:
+g <- function(y) f(y)
+h <- function(z) g(z)
+f(a + b)
+g(a + b)
+h(a + b)
+# To avoid this behavour, set .follow_symbols = FALSE
+# See vignette("chained-promises") for details
+```
+
+# 19 lazy_dots
+```{r}
+lazy_dots(x = 1)
+lazy_dots(a, b, c * 4)
+f <- function(x = a + b, ...) {
+lazy_dots(x = x, y = a + b, ...)
+}
+f(z = a + b)
+f(z = a + b, .follow_symbols = TRUE)
+# .follow_symbols is off by default because it causes problems
+# with lazy loaded objects
+lazy_dots(letters)
+lazy_dots(letters, .follow_symbols = TRUE)
+# You can also modify a dots like a list. Anything on the RHS will
+# be coerced to a lazy.
+l <- lazy_dots(x = 1)
+l$y <- quote(f)
+l[c("y", "x")]
+l["z"] <- list(~g)
+c(lazy_dots(x = 1), lazy_dots(f))
+```
+
+# 20 lazy_eval
+```{r}
+f <- function(x) {
+z <- 100
+~ x + z
+}
+z <- 10
+lazy_eval(f(10))
+lazy_eval(f(10), list(x = 100))
+lazy_eval(f(10), list(x = 1, z = 1))
+lazy_eval(lazy_dots(a = x, b = z), list(x = 10))
+```
+
+# 21 make_call
+```{r}
+make_call(quote(f), lazy_dots(x = 1, 2))
+make_call(quote(f), list(x = 1, y = ~x))
+make_call(quote(f), ~x)
+# If no known or no common environment, fails back to baseenv()
+make_call(quote(f), quote(x))
+```
+
+# 22 missing_arg
+```{r}
+f_interp(~f(x = uq(missing_arg())))
+f_interp(~f(x = uq(NULL)))
+```
+
+
+
+
+
+
+
+
+
